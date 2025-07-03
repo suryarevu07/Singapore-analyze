@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HDB Resale Price Predictor</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://unpkg.com/@heroicons/react@2.0.18/24/outline/index.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+    }
+    .fade-in {
+      animation: fadeIn 0.5s ease-in;
+    }
+    .slide-up {
+      animation: slideUp 0.3s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .spinner {
+      border: 4px solid rgba(0, 0, 0, 0.1);
+      border-left: 4px solid #4b5e9d;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4">
+  <div id="root" class="container mx-auto"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const App = () => {
+      const [formData, setFormData] = useState({
+        flatType: 0,
+        floorArea: 90,
+        year: 2024,
+        town: 0,
+        street: 0,
+        flatModel: 0,
+        leaseYear: 2000,
+        month: 6,
+      });
+      const [predictedPrice, setPredictedPrice] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const [filteredStreets, setFilteredStreets] = useState([]);
+
+      const flatTypeOptions = ['1 ROOM', '2 ROOM', '3 ROOM', '4 ROOM', '5 ROOM', 'EXECUTIVE', 'MULTI-GENERATION'];
+      const townOptions = [
+        'ANG MO KIO', 'BEDOK', 'BISHAN', 'BUKIT BATOK', 'BUKIT MERAH', 'BUKIT TIMAH', 'CENTRAL AREA',
+        'CHOA CHU KANG', 'CLEMENTI', 'GEYLANG', 'HOUGANG', 'JURONG EAST', 'JURONG WEST', 'KALLANG/WHAMPOA',
+        'MARINE PARADE', 'QUEENSTOWN', 'SENGKANG', 'SERANGOON', 'TAMPINES', 'TOA PAYOH', 'WOODLANDS',
+        'YISHUN', 'LIM CHU KANG', 'SEMBAWANG', 'BUKIT PANJANG', 'PASIR RIS', 'PUNGGOL'
+      ];
+      const streetOptions = [
+        'ANG MO KIO AVE 1', 'ANG MO KIO AVE 3', 'ANG MO KIO AVE 4', 'ANG MO KIO AVE 10', 'ANG MO KIO AVE 5',
+        'ANG MO KIO AVE 8', 'ANG MO KIO AVE 6', 'ANG MO KIO AVE 9', 'ANG MO KIO AVE 2', 'BEDOK RESERVOIR RD',
+        'BEDOK NTH ST 3', 'BEDOK STH RD', 'NEW UPP CHANGI RD', 'BEDOK NTH RD', 'BEDOK STH AVE 1', 'CHAI CHEE RD',
+        'CHAI CHEE DR', 'BEDOK NTH AVE 4', 'BEDOK STH AVE 3', 'BEDOK STH AVE 2', 'BEDOK NTH ST 2', 'BEDOK NTH ST 4',
+        'BEDOK NTH AVE 2', 'BEDOK NTH AVE 3', 'BEDOK NTH AVE 1', 'BEDOK NTH ST 1', 'CHAI CHEE ST', 'SIN MING RD',
+        'SHUNFU RD', 'BT BATOK ST 11', 'BT BATOK WEST AVE 8', 'BT BATOK WEST AVE 6', 'BT BATOK ST 21',
+        'BT BATOK EAST AVE 5', 'BT BATOK EAST AVE 4', 'HILLVIEW AVE', 'BT BATOK CTRL', 'BT BATOK ST 31',
+        'BT BATOK EAST AVE 3', 'TAMAN HO SWEE', 'TELOK BLANGAH CRES', 'BEO CRES', 'TELOK BLANGAH DR', 'DEPOT RD',
+        'TELOK BLANGAH RISE', 'JLN BT MERAH', 'HENDERSON RD', 'INDUS RD', 'BT MERAH VIEW', 'HENDERSON CRES',
+        'BT PURMEI RD', 'TELOK BLANGAH HTS', 'EVERTON PK', 'KG BAHRU HILL', 'REDHILL CL', 'HOY FATT RD',
+        'HAVELOCK RD', 'JLN KLINIK', 'JLN RUMAH TINGGI', 'JLN BT HO SWEE', 'KIM CHENG ST', 'MOH GUAN TER',
+        'TELOK BLANGAH WAY', 'KIM TIAN RD', 'KIM TIAN PL', 'EMPRESS RD', "QUEEN'S RD", 'FARRER RD', 'JLN KUKOH',
+        'OUTRAM PK', 'SHORT ST', 'SELEGIE RD', 'UPP CROSS ST', 'WATERLOO ST', 'QUEEN ST', 'BUFFALO RD',
+        'ROWELL RD', 'ROCHOR RD', 'BAIN ST', 'SMITH ST', 'VEERASAMY RD', 'TECK WHYE AVE', 'TECK WHYE LANE',
+        'CLEMENTI AVE 3', 'WEST COAST DR', 'CLEMENTI AVE 2', 'CLEMENTI AVE 5', 'CLEMENTI AVE 4', 'CLEMENTI AVE 1',
+        'WEST COAST RD', 'CLEMENTI WEST ST 1', 'CLEMENTI WEST ST 2', 'CLEMENTI ST 13', "C'WEALTH AVE WEST",
+        'CLEMENTI AVE 6', 'CLEMENTI ST 14', 'CIRCUIT RD', 'MACPHERSON LANE', 'JLN PASAR BARU', 'GEYLANG SERAI',
+        'EUNOS CRES', 'SIMS DR', 'ALJUNIED CRES', 'GEYLANG EAST AVE 1', 'DAKOTA CRES', 'PINE CL', 'HAIG RD',
+        'BALAM RD', 'JLN DUA', 'GEYLANG EAST CTRL', 'EUNOS RD 5', 'HOUGANG AVE 3', 'HOUGANG AVE 5', 'HOUGANG AVE 1',
+        'HOUGANG ST 22', 'HOUGANG AVE 10', 'LOR AH SOO', 'HOUGANG ST 11', 'HOUGANG AVE 7', 'HOUGANG ST 21',
+        'TEBAN GDNS RD', 'JURONG EAST AVE 1', 'JURONG EAST ST 32', 'JURONG EAST ST 13', 'JURONG EAST ST 21',
+        'JURONG EAST ST 24', 'JURONG EAST ST 31', 'PANDAN GDNS', 'YUNG KUANG RD', 'HO CHING RD', 'HU CHING RD',
+        'BOON LAY DR', 'BOON LAY AVE', 'BOON LAY PL', 'JURONG WEST ST 52', 'JURONG WEST ST 41',
+        'JURONG WEST AVE 1', 'JURONG WEST ST 42', 'JLN BATU', "ST. GEORGE'S RD", 'NTH BRIDGE RD', 'FRENCH RD',
+        'BEACH RD', 'WHAMPOA DR', 'UPP BOON KENG RD', 'BENDEMEER RD', 'WHAMPOA WEST', 'LOR LIMAU',
+        'KALLANG BAHRU', 'GEYLANG BAHRU', 'DORSET RD', 'OWEN RD', 'KG ARANG RD', 'JLN BAHAGIA', 'MOULMEIN RD',
+        'TOWNER RD', 'JLN RAJAH', 'KENT RD', 'AH HOOD RD', "KING GEORGE'S AVE", 'CRAWFORD LANE', 'MARINE CRES',
+        'MARINE DR', 'MARINE TER', "C'WEALTH CL", "C'WEALTH DR", 'TANGLIN HALT RD', "C'WEALTH CRES", 'DOVER RD',
+        'MARGARET DR', 'GHIM MOH RD', 'DOVER CRES', 'STIRLING RD', 'MEI LING ST', 'HOLLAND CL', 'HOLLAND AVE',
+        'HOLLAND DR', 'DOVER CL EAST', 'SELETAR WEST FARMWAY 6', 'LOR LEW LIAN', 'SERANGOON NTH AVE 1',
+        'SERANGOON AVE 2', 'SERANGOON AVE 4', 'SERANGOON CTRL', 'TAMPINES ST 11', 'TAMPINES ST 21',
+        'TAMPINES ST 91', 'TAMPINES ST 81', 'TAMPINES AVE 4', 'TAMPINES ST 22', 'TAMPINES ST 12',
+        'TAMPINES ST 23', 'TAMPINES ST 24', 'TAMPINES ST 41', 'TAMPINES ST 82', 'TAMPINES ST 83',
+        'TAMPINES AVE 5', 'LOR 2 TOA PAYOH', 'LOR 8 TOA PAYOH', 'LOR 1 TOA PAYOH', 'LOR 5 TOA PAYOH',
+        'LOR 3 TOA PAYOH', 'LOR 7 TOA PAYOH', 'TOA PAYOH EAST', 'LOR 4 TOA PAYOH', 'TOA PAYOH CTRL',
+        'TOA PAYOH NTH', 'POTONG PASIR AVE 3', 'POTONG PASIR AVE 1', 'UPP ALJUNIED LANE', 'JOO SENG RD',
+        'MARSILING LANE', 'MARSILING DR', 'MARSILING RISE', 'MARSILING CRES', 'WOODLANDS CTR RD',
+        'WOODLANDS ST 13', 'WOODLANDS ST 11', 'YISHUN RING RD', 'YISHUN AVE 5', 'YISHUN ST 72', 'YISHUN ST 11',
+        'YISHUN ST 21', 'YISHUN ST 22', 'YISHUN AVE 3', 'CHAI CHEE AVE', 'ZION RD', 'LENGKOK BAHRU',
+        'SPOTTISWOODE PK RD', 'NEW MKT RD', 'TG PAGAR PLAZA', 'KELANTAN RD', 'PAYA LEBAR WAY', 'UBI AVE 1',
+        'SIMS AVE', 'YUNG PING RD', 'TAO CHING RD', 'GLOUCESTER RD', 'BOON KENG RD', 'WHAMPOA STH',
+        'CAMBRIDGE RD', 'TAMPINES ST 42', 'LOR 6 TOA PAYOH', 'KIM KEAT AVE', 'YISHUN AVE 6', 'YISHUN AVE 9',
+        'YISHUN ST 71', 'BT BATOK ST 32', 'SILAT AVE', 'TIONG BAHRU RD', 'SAGO LANE', "ST. GEORGE'S LANE",
+        'LIM CHU KANG RD', "C'WEALTH AVE", "QUEEN'S CL", 'SERANGOON AVE 3', 'POTONG PASIR AVE 2',
+        'WOODLANDS AVE 1', 'YISHUN AVE 4', 'LOWER DELTA RD', 'NILE RD', 'JLN MEMBINA BARAT', 'JLN BERSEH',
+        'CHANDER RD', 'CASSIA CRES', 'OLD AIRPORT RD', 'ALJUNIED RD', 'BUANGKOK STH FARMWAY 1',
+        'BT BATOK ST 33', 'ALEXANDRA RD', 'CHIN SWEE RD', 'SIMS PL', 'HOUGANG AVE 2', 'HOUGANG AVE 8',
+        'SEMBAWANG RD', 'SIMEI ST 1', 'BT BATOK ST 34', 'BT MERAH CTRL', 'LIM LIAK ST', 'JLN TENTERAM',
+        'WOODLANDS ST 32', 'SIN MING AVE', 'BT BATOK ST 52', 'DELTA AVE', 'PIPIT RD', 'HOUGANG AVE 4',
+        'QUEENSWAY', 'YISHUN ST 61', 'BISHAN ST 12', "JLN MA'MOR", 'TAMPINES ST 44', 'TAMPINES ST 43',
+        'BISHAN ST 13', 'JLN DUSUN', 'YISHUN AVE 2', 'JOO CHIAT RD', 'EAST COAST RD', 'REDHILL RD',
+        'KIM PONG RD', 'RACE COURSE RD', 'KRETA AYER RD', 'HOUGANG ST 61', 'TESSENSOHN RD', 'MARSILING RD',
+        'YISHUN ST 81', 'BT BATOK ST 51', 'BT BATOK WEST AVE 4', 'BT BATOK WEST AVE 2', 'JURONG WEST ST 91',
+        'JURONG WEST ST 81', 'GANGSA RD', 'MCNAIR RD', 'SIMEI ST 4', 'YISHUN AVE 7', 'SERANGOON NTH AVE 2',
+        'YISHUN AVE 11', 'BANGKIT RD', 'JURONG WEST ST 73', 'OUTRAM HILL', 'HOUGANG AVE 6', 'PASIR RIS ST 12',
+        'PENDING RD', 'PETIR RD', 'LOR 3 GEYLANG', 'BISHAN ST 11', 'PASIR RIS DR 6', 'BISHAN ST 23',
+        'JURONG WEST ST 92', 'PASIR RIS ST 11', 'YISHUN CTRL', 'BISHAN ST 22', 'SIMEI RD', 'TAMPINES ST 84',
+        'BT PANJANG RING RD', 'JURONG WEST ST 93', 'FAJAR RD', 'WOODLANDS ST 81', 'CHOA CHU KANG CTRL',
+        'PASIR RIS ST 51', 'HOUGANG ST 52', 'CASHEW RD', 'TOH YI DR', 'HOUGANG CTRL', 'KG KAYU RD',
+        'TAMPINES AVE 8', 'TAMPINES ST 45', 'SIMEI ST 2', 'WOODLANDS AVE 3', 'LENGKONG TIGA',
+        'WOODLANDS ST 82', 'SERANGOON NTH AVE 4', 'SERANGOON CTRL DR', 'BRIGHT HILL DR', 'SAUJANA RD',
+        'CHOA CHU KANG AVE 3', 'TAMPINES AVE 9', 'JURONG WEST ST 51', 'YUNG HO RD', 'SERANGOON AVE 1',
+        'PASIR RIS ST 41', 'GEYLANG EAST AVE 2', 'CHOA CHU KANG AVE 2', 'KIM KEAT LINK', 'PASIR RIS DR 4',
+        'PASIR RIS ST 21', 'SENG POH RD', 'HOUGANG ST 51', 'JURONG WEST ST 72', 'JURONG WEST ST 71',
+        'PASIR RIS ST 52', 'TAMPINES ST 32', 'CHOA CHU KANG AVE 4', 'CHOA CHU KANG LOOP', 'JLN TENAGA',
+        'TAMPINES CTRL 1', 'TAMPINES ST 33', 'BT BATOK WEST AVE 7', 'JURONG WEST AVE 5', 'TAMPINES AVE 7',
+        'WOODLANDS ST 83', 'CHOA CHU KANG ST 51', 'PASIR RIS DR 3', 'YISHUN CTRL 1', 'CHOA CHU KANG AVE 1',
+        'WOODLANDS ST 31', 'BT MERAH LANE 1', 'PASIR RIS ST 13', 'ELIAS RD', 'BISHAN ST 24', 'WHAMPOA RD',
+        'WOODLANDS ST 41', 'PASIR RIS ST 71', 'JURONG WEST ST 74', 'PASIR RIS DR 1', 'PASIR RIS ST 72',
+        'PASIR RIS DR 10', 'CHOA CHU KANG ST 52', 'CLARENCE LANE', 'CHOA CHU KANG NTH 6', 'PASIR RIS ST 53',
+        'CHOA CHU KANG NTH 5', 'ANG MO KIO ST 21', 'JLN DAMAI', 'CHOA CHU KANG ST 62', 'WOODLANDS AVE 5',
+        'WOODLANDS DR 50', 'CHOA CHU KANG ST 53', 'TAMPINES ST 72', 'UPP SERANGOON RD', 'JURONG WEST ST 75',
+        'STRATHMORE AVE', 'ANG MO KIO ST 31', 'TAMPINES ST 34', 'YUNG AN RD', 'WOODLANDS AVE 4',
+        'CHOA CHU KANG NTH 7', 'ANG MO KIO ST 11', 'WOODLANDS AVE 9', 'YUNG LOH RD', 'CHOA CHU KANG DR',
+        'CHOA CHU KANG ST 54', 'REDHILL LANE', 'KANG CHING RD', 'TAH CHING RD', 'SIMEI ST 5',
+        'WOODLANDS DR 40', 'WOODLANDS DR 70', 'TAMPINES ST 71', 'WOODLANDS DR 42', 'SERANGOON NTH AVE 3',
+        'JELAPANG RD', 'BT BATOK ST 22', 'HOUGANG ST 91', 'WOODLANDS AVE 6', 'WOODLANDS CIRCLE',
+        'CORPORATION DR', 'LOMPANG RD', 'WOODLANDS DR 72', 'CHOA CHU KANG ST 64', 'BT BATOK ST 24',
+        'JLN TECK WHYE', 'WOODLANDS CRES', 'WOODLANDS DR 60', 'CHANGI VILLAGE RD', 'BT BATOK ST 25',
+        'HOUGANG AVE 9', 'JURONG WEST CTRL 1', 'WOODLANDS RING RD', 'CHOA CHU KANG AVE 5', 'TOH GUAN RD',
+        'JURONG WEST ST 61', 'WOODLANDS DR 14', 'HOUGANG ST 92', 'CHOA CHU KANG CRES', 'SEMBAWANG CL',
+        'CANBERRA RD', 'SEMBAWANG CRES', 'SEMBAWANG VISTA', 'COMPASSVALE WALK', 'RIVERVALE ST',
+        'WOODLANDS DR 62', 'SEMBAWANG DR', 'WOODLANDS DR 53', 'WOODLANDS DR 52', 'RIVERVALE WALK',
+        'COMPASSVALE LANE', 'RIVERVALE DR', 'SENJA RD', 'JURONG WEST ST 65', 'RIVERVALE CRES',
+        'WOODLANDS DR 44', 'COMPASSVALE DR', 'WOODLANDS DR 16', 'COMPASSVALE RD', 'WOODLANDS DR 73',
+        'HOUGANG ST 31', 'JURONG WEST ST 64', 'WOODLANDS DR 71', 'YISHUN ST 20', 'ADMIRALTY DR',
+        'COMPASSVALE ST', 'BEDOK RESERVOIR VIEW', 'YUNG SHENG RD', 'ADMIRALTY LINK', 'SENGKANG EAST WAY',
+        'ANG MO KIO ST 32', 'ANG MO KIO ST 52', 'BOON TIONG RD', 'JURONG WEST ST 62', 'ANCHORVALE LINK',
+        'CANBERRA LINK', 'COMPASSVALE CRES', 'CLEMENTI ST 12', 'MONTREAL DR', 'WELLINGTON CIRCLE',
+        'SENGKANG EAST RD', 'JURONG WEST AVE 3', 'ANCHORVALE LANE', 'SENJA LINK', 'EDGEFIELD PLAINS',
+        'ANCHORVALE DR', 'SEGAR RD', 'FARRER PK RD', 'PUNGGOL FIELD', 'EDGEDALE PLAINS', 'ANCHORVALE RD',
+        'CANTONMENT CL', 'JLN MEMBINA', 'FERNVALE LANE', 'JURONG WEST ST 25', 'CLEMENTI ST 11',
+        'PUNGGOL FIELD WALK', 'KLANG LANE', 'PUNGGOL CTRL', 'JELEBU RD', 'BUANGKOK CRES',
+        'WOODLANDS DR 75', 'BT BATOK WEST AVE 5', 'JELLICOE RD', 'PUNGGOL DR', 'JURONG WEST ST 24',
+        'SEMBAWANG WAY', 'FERNVALE RD', 'BUANGKOK LINK', 'FERNVALE LINK', 'JLN TIGA', 'YUAN CHING RD',
+        'COMPASSVALE LINK', 'MARINE PARADE CTRL', 'COMPASSVALE BOW', 'PUNGGOL RD', 'BEDOK CTRL',
+        'PUNGGOL EAST', 'SENGKANG CTRL', 'CANTONMENT RD', 'PUNGGOL PL', 'SENGKANG WEST AVE',
+        'TAMPINES CTRL 7', 'GHIM MOH LINK', 'SIMEI LANE', 'YISHUN ST 41', 'TELOK BLANGAH ST 31',
+        'JLN KAYU', 'LOR 1A TOA PAYOH', 'PUNGGOL WALK', 'SENGKANG WEST WAY', 'BUANGKOK GREEN',
+        'PUNGGOL WAY', 'YISHUN ST 31', 'TECK WHYE CRES', 'MONTREAL LINK', 'UPP SERANGOON CRES',
+        'SUMANG LINK', 'SENGKANG EAST AVE', 'YISHUN AVE 1', 'ANCHORVALE CRES', 'ANCHORVALE ST',
+        'TAMPINES CTRL 8', 'YISHUN ST 51', 'UPP SERANGOON VIEW', 'TAMPINES AVE 1', 'BEDOK RESERVOIR CRES',
+        'ANG MO KIO ST 61', 'DAWSON RD', 'FERNVALE ST', 'HOUGANG ST 32', 'TAMPINES ST 86', 'SUMANG WALK',
+        'CHOA CHU KANG AVE 7', 'KEAT HONG CL', 'JURONG WEST CTRL 3', 'KEAT HONG LINK', 'ALJUNIED AVE 2',
+        'CANBERRA CRES', 'SUMANG LANE', 'CANBERRA ST', 'ANG MO KIO ST 44', 'ANG MO KIO ST 51',
+        'BT BATOK EAST AVE 6', 'BT BATOK WEST AVE 9', 'CANBERRA WALK', 'WOODLANDS RISE', 'TAMPINES ST 61',
+        'YISHUN ST 43', 'CANBERRA VIEW', 'SENGKANG WEST RD', 'TAMPINES NTH DR 1', 'ALKAFF CRES',
+        'BIDADARI PK DR', 'BT BATOK ST 41', 'NORTHSHORE DR', 'YISHUN ST 42', 'YISHUN ST 44'
+      ];
+
+      useEffect(() => {
+        const fetchStreets = async () => {
+          try {
+            const response = await axios.post('http://127.0.0.1:5000/get_town_streets', { town_idx: formData.town });
+            if (response.data.streets) {
+              setFilteredStreets(response.data.streets);
+              if (response.data.streets.length > 0 && !response.data.streets.includes(formData.street)) {
+                setFormData(prev => ({ ...prev, street: response.data.streets[0] || 0 }));
+              }
+            } else if (response.data.error) {
+              setError(`Failed to load streets: ${response.data.error}`);
+            }
+          } catch (err) {
+            setError('Error fetching streets. Check backend connection.');
+            console.error(err);
+          }
+        };
+        fetchStreets();
+      }, [formData.town]);
+
+      const flatModelOptions = ['2-ROOM', '3GEN', 'ADJOINED FLAT', 'APARTMENT', 'DBSS', 'IMPROVED', 'IMPROVED MAISONETTE', 'MAISONETTE', 'MODEL A', 'MODEL A MAISONETTE', 'MODEL A2', 'MULTI-GENERATION', 'NEW GENERATION', 'PREMIUM APARTMENT', 'SIMPLIFIED', 'STANDARD', 'TERRACE', 'TYPE S1', 'TYPE S2'];
+      const monthOptions = Array.from({ length: 12 }, (_, i) => i + 1);
+
+      const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData((prev) => ({ ...prev, [name]: +value }));
+      };
+
+      const handlePredict = async () => {
+        const leaseRemaining = formData.year - formData.leaseYear;
+        if (leaseRemaining < 0) {
+          setError("Lease commence year cannot be after transaction year.");
+          return;
+        }
+
+        const features = [
+          formData.flatType,
+          formData.floorArea,
+          formData.year,
+          formData.town,
+          formData.street,
+          formData.flatModel,
+          leaseRemaining,
+          formData.month,
+        ];
+
+        setLoading(true);
+        setError(null);
+        setPredictedPrice(null);
+
+        try {
+          const response = await axios.post('http://127.0.0.1:5000/predict', {
+            features,
+            flat_type_options: flatTypeOptions,
+            flat_model_options: flatModelOptions
+          });
+          setPredictedPrice(response.data.price);
+        } catch (error) {
+          setError("Prediction failed. Check if backend is running or try again.");
+          console.error(error);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleReset = () => {
+        setFormData({
+          flatType: 0,
+          floorArea: 90,
+          year: 2024,
+          town: 0,
+          street: 0,
+          flatModel: 0,
+          leaseYear: 2000,
+          month: 6,
+        });
+        setPredictedPrice(null);
+        setError(null);
+        setFilteredStreets([]);
+      };
+
+      return (
+        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-2xl p-6 fade-in border border-indigo-200">
+          <h1 className="text-4xl font-bold text-indigo-800 mb-6 text-center">🏠 HDB Resale Price Predictor</h1>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Type of flat (e.g., 1 ROOM)">
+                Flat Type
+              </label>
+              <select
+                name="flatType"
+                value={formData.flatType}
+                onChange={handleChange}
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              >
+                {flatTypeOptions.map((option, index) => (
+                  <option key={index} value={index} className="text-gray-800">{option}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Area in square meters (30-150)">
+                Floor Area (sqm)
+              </label>
+              <input
+                type="number"
+                name="floorArea"
+                value={formData.floorArea}
+                onChange={handleChange}
+                min="30"
+                max="150"
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Year of transaction (1990-2025)">
+                Transaction Year
+              </label>
+              <input
+                type="number"
+                name="year"
+                value={formData.year}
+                onChange={handleChange}
+                min="1990"
+                max="2025"
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Town location (e.g., ANG MO KIO)">
+                Town
+              </label>
+              <select
+                name="town"
+                value={formData.town}
+                onChange={handleChange}
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              >
+                {townOptions.map((option, index) => (
+                  <option key={index} value={index} className="text-gray-800">{option}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Specific street address (e.g., ANG MO KIO AVE 1)">
+                Street
+              </label>
+              <select
+                name="street"
+                value={formData.street}
+                onChange={handleChange}
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              >
+                {filteredStreets.map((index) => (
+                  <option key={index} value={index} className="text-gray-800">{streetOptions[index]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Model of the flat (e.g., 2-ROOM)">
+                Flat Model
+              </label>
+              <select
+                name="flatModel"
+                value={formData.flatModel}
+                onChange={handleChange}
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              >
+                {flatModelOptions.map((option, index) => (
+                  <option key={index} value={index} className="text-gray-800">{option}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Year lease commenced (1960-2025)">
+                Lease Commence Year
+              </label>
+              <input
+                type="number"
+                name="leaseYear"
+                value={formData.leaseYear}
+                onChange={handleChange}
+                min="1960"
+                max="2025"
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              />
+            </div>
+
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+              <label className="block text-base font-semibold text-indigo-700" title="Month of transaction (1-12)">
+                Transaction Month
+              </label>
+              <select
+                name="month"
+                value={formData.month}
+                onChange={handleChange}
+                className="mt-2 block w-full p-2 bg-white border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-400 transition"
+              >
+                {monthOptions.map((option) => (
+                  <option key={option} value={option} className="text-gray-800">{option}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-between items-center">
+            <button
+              onClick={handlePredict}
+              disabled={loading}
+              className="w-1/2 bg-gradient-to-r from-teal-500 to-emerald-600 text-white py-3 rounded-lg hover:from-teal-600 hover:to-emerald-700 transition duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              {loading ? (
+                <>
+                  <div className="spinner mr-2"></div> Predicting...
+                </>
+              ) : (
+                "Predict Price"
+              )}
+            </button>
+            <button
+              onClick={handleReset}
+              className="w-1/3 ml-4 bg-gradient-to-r from-red-500 to-rose-600 text-white py-3 rounded-lg hover:from-red-600 hover:to-rose-700 transition duration-300 transform hover:scale-105"
+            >
+              Reset
+            </button>
+          </div>
+
+          {error && <p className="mt-4 text-center text-red-600 font-medium slide-up">{error}</p>}
+          {predictedPrice && (
+            <div className="mt-6 p-4 bg-gradient-to-br from-green-50 to-lime-50 rounded-xl shadow-lg text-center slide-up">
+              <p className="text-2xl font-bold text-green-800">
+                Predicted Resale Price: ${predictedPrice.toLocaleString()}
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
